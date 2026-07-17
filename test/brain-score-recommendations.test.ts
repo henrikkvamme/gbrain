@@ -5,6 +5,7 @@ import {
   maxReachableScore,
   estimateAnthropicCost,
   embeddingProviderConfigured,
+  chatProviderConfigured,
   HOSTED_EMBED_KEY_CONFIG,
 } from '../src/core/brain-score-recommendations.ts';
 import type { BrainHealth } from '../src/core/types.ts';
@@ -64,6 +65,26 @@ describe('embeddingProviderConfigured (recipe-aware helper)', () => {
     // (producer closures fall through to process.env only for these).
     expect(HOSTED_EMBED_KEY_CONFIG.VOYAGE_API_KEY).toBeUndefined();
     expect(HOSTED_EMBED_KEY_CONFIG.GOOGLE_GENERATIVE_AI_API_KEY).toBeUndefined();
+  });
+});
+
+describe('chatProviderConfigured (recipe-aware helper)', () => {
+  const alwaysTrue = () => true;
+  const alwaysFalse = () => false;
+
+  test('subscription-auth Codex needs no provider API key', () => {
+    expect(chatProviderConfigured('codex:gpt-5.6-sol@high', alwaysFalse)).toBe(true);
+  });
+
+  test('hosted chat providers still require their declared key', () => {
+    expect(chatProviderConfigured('anthropic:claude-sonnet-4-6', alwaysFalse)).toBe(false);
+    expect(chatProviderConfigured('anthropic:claude-sonnet-4-6', (key) => key === 'ANTHROPIC_API_KEY')).toBe(true);
+  });
+
+  test('invalid, unknown, and non-chat models are rejected', () => {
+    expect(chatProviderConfigured(undefined, alwaysTrue)).toBe(false);
+    expect(chatProviderConfigured('missing-provider:model', alwaysTrue)).toBe(false);
+    expect(chatProviderConfigured('voyage:voyage-3', alwaysTrue)).toBe(false);
   });
 });
 

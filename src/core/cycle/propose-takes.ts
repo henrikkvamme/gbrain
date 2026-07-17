@@ -331,6 +331,12 @@ class ProposeTakesPhase extends BaseCyclePhase {
     }
 
     for (const page of pages) {
+      // Never recursively analyze dream-cycle artifacts. Extract receipts are
+      // stamped both ways by receipt-writer; either marker is sufficient so
+      // older rows and partially migrated sources also fail closed.
+      if (page.type === 'extract_receipt' || page.frontmatter?.dream_generated === true) {
+        continue;
+      }
       result.pages_scanned += 1;
       this.tick(opts);
 

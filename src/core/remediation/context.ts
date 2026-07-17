@@ -34,10 +34,12 @@ export async function loadRecommendationContext(
   const repoPath = await engine.getConfig('sync.repo_path');
   let embeddingModel: string | undefined;
   let embeddingDimensions: number | undefined;
+  let chatModel: string | undefined;
   try {
     const gw = await import('../ai/gateway.ts');
     embeddingModel = gw.getEmbeddingModel();
     embeddingDimensions = gw.getEmbeddingDimensions();
+    chatModel = gw.getChatModel();
   } catch {
     // Gateway unconfigured — fall back to DB plane as a best-effort hint
     // (preserves doctor running before any engine.connect()).
@@ -45,6 +47,7 @@ export async function loadRecommendationContext(
     const dbDims = await engine.getConfig('embedding_dimensions');
     embeddingModel = dbModel ?? undefined;
     embeddingDimensions = dbDims ? Number(dbDims) : undefined;
+    chatModel = (await engine.getConfig('chat_model')) ?? undefined;
   }
   // v0.40.x: recipe-aware provider check, shared with autopilot.ts via
   // embeddingProviderConfigured(). Local providers (ollama, llama-server —
@@ -54,11 +57,21 @@ export async function loadRecommendationContext(
   // fileCfg loads synchronously, so the resolveKey closure is sync.
   const { loadConfigFileOnly } = await import('../config.ts');
   const fileCfg = loadConfigFileOnly();
-  const { embeddingProviderConfigured, HOSTED_EMBED_KEY_CONFIG } = await import(
+  const {
+    chatProviderConfigured,
+    embeddingProviderConfigured,
+    HOSTED_CHAT_KEY_CONFIG,
+    HOSTED_EMBED_KEY_CONFIG,
+  } = await import(
     '../brain-score-recommendations.ts'
   );
   const embeddingConfigured = embeddingProviderConfigured(embeddingModel, (envVar) => {
     const cfgField = HOSTED_EMBED_KEY_CONFIG[envVar];
+    const fromCfg = cfgField ? (fileCfg as Record<string, unknown> | null)?.[cfgField] : undefined;
+    return !!(process.env[envVar] || fromCfg);
+  });
+  const chatConfigured = chatProviderConfigured(chatModel, (envVar) => {
+    const cfgField = HOSTED_CHAT_KEY_CONFIG[envVar];
     const fromCfg = cfgField ? (fileCfg as Record<string, unknown> | null)?.[cfgField] : undefined;
     return !!(process.env[envVar] || fromCfg);
   });
@@ -67,6 +80,7 @@ export async function loadRecommendationContext(
     embeddingModel,
     embeddingDimensions,
     embeddingProviderConfigured: embeddingConfigured,
-    hasChatApiKey: !!(process.env.ANTHROPIC_API_KEY || fileCfg?.anthropic_api_key),
+    chatModel,
+    chatProviderConfigured: chatConfigured,
   };
 }

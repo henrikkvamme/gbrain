@@ -28,6 +28,12 @@ export const HOSTED_EMBED_KEY_CONFIG: Record<string, string> = {
   ZEROENTROPY_API_KEY: 'zeroentropy_api_key',
 };
 
+/** File/DB config fields that buildGatewayConfig folds into chat provider env. */
+export const HOSTED_CHAT_KEY_CONFIG: Record<string, string> = {
+  OPENAI_API_KEY: 'openai_api_key',
+  ANTHROPIC_API_KEY: 'anthropic_api_key',
+};
+
 /**
  * v0.40.x: is the configured embedding provider usable for the remediation
  * planner? Recipe-aware:
@@ -47,21 +53,43 @@ export const HOSTED_EMBED_KEY_CONFIG: Record<string, string> = {
  * Uses the recipe registry (pure data), not the gateway runtime, so this
  * module stays free of AI-SDK coupling and works before engine.connect().
  */
-export function embeddingProviderConfigured(
-  embeddingModel: string | undefined,
+function providerConfigured(
+  model: string | undefined,
+  touchpoint: 'embedding' | 'chat',
   resolveKey: (envVar: string) => boolean,
 ): boolean {
-  if (!embeddingModel) return false;
+  if (!model) return false;
   let providerId: string;
   try {
-    ({ providerId } = parseModelId(embeddingModel));
+    ({ providerId } = parseModelId(model));
   } catch {
     return false; // malformed model id — mirror gateway.isAvailable's catch
   }
   const recipe = getRecipe(providerId);
-  if (!recipe?.touchpoints?.embedding) return false;
+  if (!recipe?.touchpoints?.[touchpoint]) return false;
   const required = recipe.auth_env?.required ?? [];
   return required.length === 0 ? true : required.every(resolveKey);
+}
+
+export function embeddingProviderConfigured(
+  embeddingModel: string | undefined,
+  resolveKey: (envVar: string) => boolean,
+): boolean {
+  return providerConfigured(embeddingModel, 'embedding', resolveKey);
+}
+
+/**
+ * Is a chat provider configured for dream/remediation planning?
+ * Subscription/local providers declare no required API-key env vars and are
+ * therefore configured once selected. Runtime reachability and subscription
+ * validity are checked by the actual chat call. Hosted providers remain gated
+ * on every required key declared by their recipe.
+ */
+export function chatProviderConfigured(
+  chatModel: string | undefined,
+  resolveKey: (envVar: string) => boolean,
+): boolean {
+  return providerConfigured(chatModel, 'chat', resolveKey);
 }
 
 /** Minimal Check shape consumed by classifyChecks. Subset of doctor.ts's
@@ -144,8 +172,8 @@ export interface RecommendationContext {
   embeddingProviderConfigured?: boolean;
   /** Configured chat / synthesis model id. */
   chatModel?: string;
-  /** Whether the chat provider has a usable API key. */
-  hasChatApiKey?: boolean;
+  /** Whether a chat provider is configured and its declared key prereqs resolve. */
+  chatProviderConfigured?: boolean;
 }
 
 /** Triage result for one check. */

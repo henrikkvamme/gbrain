@@ -348,6 +348,30 @@ New prose appended here.`;
     expect(extractorCalls).toBe(1);
   });
 
+  test('dream-generated extract receipts are never fed back into the proposal model', async () => {
+    const receipt = buildPage({
+      slug: 'extracts/2026-07-17/takes.proposed/default/run/round-single',
+      body: 'Generated receipt prose that must not become a take.',
+    });
+    receipt.type = 'extract_receipt';
+    receipt.frontmatter = { dream_generated: true };
+    const pages = [
+      receipt,
+      buildPage({ slug: 'wiki/real', body: 'Human-authored prose.' }),
+    ];
+    const { engine } = buildMockEngine({ pages });
+    const seen: string[] = [];
+    const extractor: ProposeTakesExtractor = async ({ pagePath }) => {
+      seen.push(pagePath);
+      return [];
+    };
+
+    const result = await runPhaseProposeTakes(buildCtx(engine), { extractor });
+
+    expect(seen).toEqual(['wiki/real']);
+    expect((result.details as Record<string, unknown>).pages_scanned).toBe(1);
+  });
+
   test('skipPagesWithFence:true bypasses pages that already have a complete fence', async () => {
     const pages = [
       buildPage({
