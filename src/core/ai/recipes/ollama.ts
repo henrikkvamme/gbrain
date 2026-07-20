@@ -24,6 +24,7 @@ export const ollama: Recipe = {
         'all-minilm',
         'qwen3-embed-8b',
         'snowflake-arctic-embed-l-v2',
+        'snowflake-arctic-embed2',
       ],
       default_dims: 768, // nomic-embed-text native dim
       trust_custom_dims: true, // #2271: local models carry varied native dims
@@ -34,5 +35,6 @@ export const ollama: Recipe = {
       no_batch_cap: true,
     },
   },
-  setup_hint: 'Install Ollama from https://ollama.ai, then `ollama pull nomic-embed-text` and `ollama serve`.',
+  setup_hint:
+    'Install Ollama from https://ollama.ai, then `ollama pull nomic-embed-text` and `ollama serve`.',
 };

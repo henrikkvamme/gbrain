@@ -35,6 +35,13 @@ describe('envReady', () => {
   });
 });
 
+describe('Ollama embedding models', () => {
+  test('accepts the official multilingual Snowflake Arctic Embed 2 model', () => {
+    const ollama = getRecipe('ollama');
+    expect(ollama?.touchpoints.embedding?.models).toContain('snowflake-arctic-embed2');
+  });
+});
+
 describe('formatRecipeTable', () => {
   test('header row present', () => {
     const out = formatRecipeTable(listRecipes(), {});
