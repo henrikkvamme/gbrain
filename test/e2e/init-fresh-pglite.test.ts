@@ -231,6 +231,38 @@ describe('v0.37 T12 — D9 --no-embedding deferred-setup mode', () => {
   }, 120000);
 });
 
+describe('reinit-pglite leaves deferred embedding mode', () => {
+  let tmpHome: string;
+
+  beforeAll(() => { tmpHome = makeTempHome(); });
+  afterAll(() => { rmSync(tmpHome, { recursive: true, force: true }); });
+
+  test('an explicit local model replaces the embedding_disabled sentinel', async () => {
+    const deferred = await runCli(['init', '--pglite', '--no-embedding'], {
+      gbrainHome: tmpHome,
+      env: {},
+    });
+    expect(deferred.exitCode).toBe(0);
+
+    const reinit = await runCli([
+      'reinit-pglite',
+      '--embedding-model', 'ollama:snowflake-arctic-embed2',
+      '--embedding-dimensions', '1024',
+      '--no-sync',
+      '--yes',
+    ], {
+      gbrainHome: tmpHome,
+      env: {},
+    });
+    expect(reinit.exitCode).toBe(0);
+
+    const cfg = JSON.parse(readFileSync(join(tmpHome, '.gbrain', 'config.json'), 'utf-8'));
+    expect(cfg.embedding_disabled).toBeUndefined();
+    expect(cfg.embedding_model).toBe('ollama:snowflake-arctic-embed2');
+    expect(cfg.embedding_dimensions).toBe(1024);
+  }, 240000);
+});
+
 // ============================================================================
 
 describe('v0.37 T12 — D11 preflight refuses BEFORE disk writes', () => {

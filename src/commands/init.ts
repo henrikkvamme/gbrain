@@ -220,8 +220,10 @@ async function resolveAIOptions(opts: ResolveAIOptionsArgs): Promise<ResolvedAIO
   // --- Tier 1+2: explicit flags ---------------------------------------------
 
   if (verbose) {
+    delete out.noEmbedding;
     out.embedding_model = verbose;
   } else if (shorthand) {
+    delete out.noEmbedding;
     const { getRecipe } = await import('../core/ai/recipes/index.ts');
     const recipe = getRecipe(shorthand);
     if (!recipe) {
@@ -931,9 +933,17 @@ async function initPGLite(opts: {
       database_path: dbPath,
       ...(opts.apiKey ? { openai_api_key: opts.apiKey } : {}),
       ...(opts.aiOpts?.noEmbedding
-        ? { embedding_disabled: true }
+        ? {
+            embedding_disabled: true,
+            embedding_model: undefined,
+            embedding_dimensions: undefined,
+          }
         : (resolvedModel && resolvedDim)
-          ? { embedding_model: resolvedModel, embedding_dimensions: resolvedDim }
+          ? {
+              embedding_disabled: undefined,
+              embedding_model: resolvedModel,
+              embedding_dimensions: resolvedDim,
+            }
           : {}),
       ...(opts.aiOpts?.expansion_model ? { expansion_model: opts.aiOpts.expansion_model } : {}),
       ...(opts.aiOpts?.chat_model ? { chat_model: opts.aiOpts.chat_model } : {}),
@@ -1175,9 +1185,17 @@ async function initPostgres(opts: {
       database_path: undefined, // clear any stale PGLite path
       ...(opts.apiKey ? { openai_api_key: opts.apiKey } : {}),
       ...(opts.aiOpts?.noEmbedding
-        ? { embedding_disabled: true }
+        ? {
+            embedding_disabled: true,
+            embedding_model: undefined,
+            embedding_dimensions: undefined,
+          }
         : (resolvedModel && resolvedDim)
-          ? { embedding_model: resolvedModel, embedding_dimensions: resolvedDim }
+          ? {
+              embedding_disabled: undefined,
+              embedding_model: resolvedModel,
+              embedding_dimensions: resolvedDim,
+            }
           : {}),
       ...(opts.aiOpts?.expansion_model ? { expansion_model: opts.aiOpts.expansion_model } : {}),
       ...(opts.aiOpts?.chat_model ? { chat_model: opts.aiOpts.chat_model } : {}),
