@@ -5,7 +5,7 @@ only.
 
 ### Test command tiers
 
-Seven test command tiers, each with a clear scope:
+Eight test command tiers, each with a clear scope:
 
 | Command | What it runs | Wallclock | When to use |
 |---|---|---|---|
@@ -13,6 +13,7 @@ Seven test command tiers, each with a clear scope:
 | `bun run verify` | CI's authoritative pre-test gate set, fanned out in parallel by `scripts/run-verify-parallel.sh`: the full `check:*` battery (~30 checks — privacy, jsonb, progress, source-id, test-isolation, wasm, …) plus `bun run typecheck`. The `CHECKS` array in that script is the single source of truth — CI literally calls `bun run verify` in a dedicated job. | ~16s (parallel; typecheck dominates) | Before pushing; before `/ship`. |
 | `bun run test:full` | `verify && bun run test && bun run test:slow && [smart e2e]`. The local equivalent of "everything CI runs." Smart e2e: runs e2e only when `DATABASE_URL` is set; else loud skip notice to stderr. | ~3-5min depending on slow + e2e | Pre-merge sanity, before opening a PR. |
 | `bun run test:slow` | Just the `*.slow.test.ts` set (intentional cold-path correctness checks). | seconds-to-minutes | When touching slow-path code. |
+| `bun run test:isolated` | Complete non-E2E unit suite, including fast, serial and slow files, one bounded Bun process per file. | Depends on suite size | Memory-constrained runners; complete coverage without cumulative module/WASM retention. |
 | `bun run test:serial` | Just the `*.serial.test.ts` set (cross-file-contention quarantine; one bun process per file for true module-registry isolation). | ~1s per quarantined file | Debugging a specific quarantined file. |
 | `bun run test:e2e` | Real Postgres E2E. Requires Docker + `DATABASE_URL`. Sequential. | ~5-10min | Pre-ship; nightly. |
 | `bun run check:all` | The historical pre-check scripts (22, chained sequentially in package.json). Overlaps `verify` heavily but is NOT a superset — `verify`'s `CHECKS` array in `scripts/run-verify-parallel.sh` (~30 entries incl. typecheck) is the authoritative gate; `check:all` keeps a few local-only extras (trailing-newline, exports-count, no-legacy-getconnection). | ~10s | Local-only sweep for the extras. |
@@ -23,6 +24,33 @@ Seven test command tiers, each with a clear scope:
 - **Local fast loop** (`scripts/run-unit-shard.sh` via the parallel wrapper) uses round-robin-by-index sharding and EXCLUDES `*.slow.test.ts` AND `*.serial.test.ts`. Local trades coverage for inner-loop speed; CI catches what local skips.
 
 This divergence is intentional. Don't try to make them equal — the two scripts deliberately solve different problems. The regression test at `test/scripts/run-unit-shard.test.ts` pins what the local fast loop should and shouldn't include.
+
+### Complete unit coverage on constrained runners
+
+`bun run test:isolated` runs the sorted non-E2E manifest in fresh Bun processes,
+including slow and serial files. Each file has a 180-second outer cap and each
+test a 120-second cap. It continues after failures and exits nonzero for failed
+assertions, nonzero process exits, timeouts, or missing summaries. The aggregate
+counts, per-file exits, manifest and full logs live in `.context/unit-isolated/`.
+`--dry-run-list` prints the exact manifest without running it.
+
+Run with a disposable HOME, both database URL variables unset, and no credentials.
+Set `TZ` before Bun starts (the runner defaults to UTC) and `LC_ALL=C`; this keeps
+Date parsing and `ps` consistent. The toolchain needs Bun, Git, Bash, and `ps`
+(`procps` on Debian). Full verification additionally needs `jq` and the admin
+build dependencies. Forks must set `LLMS_REPO_BASE` to the URL base used to
+generate their checked-in LLMS artifacts. Process isolation changes execution
+lifetime, not assertions or file coverage.
+
+`deploy/testing/Dockerfile` declares a disposable Debian/Bun toolchain for this
+runner. Build it with `docker build -f deploy/testing/Dockerfile -t gbrain-tests .`.
+A reviewed runtime image with identical frozen dependencies can be reused with
+`--build-arg TEST_BASE_IMAGE=<image>` to avoid installing them twice. Supply a
+source snapshot in a disposable writable checkout at runtime, link its
+`node_modules` to `/app/node_modules`, and initialize its local Git fixture.
+Run `bun run test:isolated` with `--network none --memory=4g --cpus=2`, a temporary
+HOME and explicit fork LLMS URL base. Keep receipts outside the container and
+remove the container afterward. No host brain or production home is mounted.
 
 ### Failure-first logging
 

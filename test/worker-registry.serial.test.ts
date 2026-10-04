@@ -9,13 +9,23 @@
  *   - Corrupt JSON skipped; cleanup unlinks.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeAll, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { execFileSync } from 'node:child_process';
 
 let home: string;
 const origHome = process.env.GBRAIN_HOME;
+
+beforeAll(() => {
+  // These assertions exercise the real ps-backed PID-reuse check. Missing ps
+  // is a test-toolchain error, not permission to silently omit that guard.
+  const start = execFileSync('ps', ['-o', 'lstart=', '-p', String(process.pid)], {
+    encoding: 'utf8', env: { ...process.env },
+  }).trim();
+  expect(Number.isFinite(Date.parse(start))).toBe(true);
+});
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'gbrain-reg-'));

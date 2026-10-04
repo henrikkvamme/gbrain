@@ -31,11 +31,15 @@ import { execSync } from 'child_process';
 import { tmpdir } from 'os';
 import { PGLiteEngine } from '../../src/core/pglite-engine.ts';
 
+const realEmbedding = await import('../../src/core/embedding.ts');
+
 // Mock must declare EVERY symbol src/core/embedding.ts exports — Bun's module
 // linker fails-fast if any consumer downstream imports a missing one. v0.36.1.0
 // added `embedMultimodal` and `embedQuery` to the module; the propose_takes
 // phase + other v0.36 phases pull both, so the mock has to keep parity.
 mock.module('../../src/core/embedding.ts', () => ({
+  ...realEmbedding,
+  willEmbedSynchronously: () => true,
   embed: async () => new Float32Array(1536),
   embedQuery: async () => new Float32Array(1536),
   embedBatch: async (texts: string[]) => texts.map(() => new Float32Array(1536)),

@@ -13,7 +13,7 @@ import { hardenBrainRepo } from '../src/core/brain-repo-durability.ts';
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', ['-C', cwd, '-c', 'protocol.file.allow=always', ...args], {
-    stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf-8', env: { ...process.env },
   }).trim();
 }
 function originHead(bare: string): string {
@@ -45,7 +45,13 @@ beforeEach(async () => {
   writeFileSync(join(work, 'README.md'), 'init\n');
   git(work, 'add', 'README.md'); git(work, 'commit', '-qm', 'init'); git(work, 'push', '-q', 'origin', 'main');
   git(work, 'remote', 'set-head', 'origin', 'main');
-  await hardenBrainRepo({ repoPath: work, sourceId: 'wiki', pat: 'ghp_x', installCron: false });
+  await hardenBrainRepo({ repoPath: work, sourceId: 'wiki', pat: 'ghp_x', installCron: false, verify: false });
+  // Seed scaffolding synchronously before the hook tests. harden's verification
+  // commits with a detached post-commit push, which can still be rebasing when
+  // the test begins its first git add. No background work belongs in setup.
+  git(work, 'add', '-A');
+  git(work, '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'scaffolding');
+  git(work, 'push', '-q', 'origin', 'main');
 });
 afterEach(() => {
   if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome;

@@ -485,8 +485,8 @@ describe('MinionSupervisor', () => {
       const outFile = join(tmpdir(), `gbrain-sup-maxrss-auto-${process.pid}-${Date.now()}.txt`);
       try { unlinkSync(outFile); } catch { /* may not exist */ }
 
-      const { resolveDefaultMaxRssMb } = await import('../src/core/minions/rss-default.ts');
-      const expected = resolveDefaultMaxRssMb();
+      const { describeDefaultMaxRss, RSS_DEFAULT_FLOOR_MB, RSS_DEFAULT_CEIL_MB } = await import('../src/core/minions/rss-default.ts');
+      const { mb: expected, basisMb } = describeDefaultMaxRss();
 
       const h = makeHarness('maxrss-auto', `printf '%s\\n' "$*" > "$OUT_FILE" ; exit 1`);
       try {
@@ -499,10 +499,16 @@ describe('MinionSupervisor', () => {
         expect(existsSync(outFile)).toBe(true);
         const argv = readFileSync(outFile, 'utf8').trim();
         expect(argv).toContain(`--max-rss ${expected}`);
-        // Auto-sized value is clamped into the sane range, never the old 2048
-        // unless the box genuinely resolves there.
-        expect(expected).toBeGreaterThanOrEqual(4096);
-        expect(expected).toBeLessThanOrEqual(16384);
+        // A small cgroup must drain below its actual ceiling; the normal floor
+        // applies only when it fits beneath that ceiling.
+        expect(expected).toBeGreaterThan(0);
+        expect(expected).toBeLessThan(basisMb);
+        expect(expected).toBeLessThanOrEqual(RSS_DEFAULT_CEIL_MB);
+        if (basisMb > RSS_DEFAULT_FLOOR_MB) {
+          expect(expected).toBeGreaterThanOrEqual(RSS_DEFAULT_FLOOR_MB);
+        } else {
+          expect(expected).toBe(Math.round(basisMb * 0.5));
+        }
       } finally {
         try { unlinkSync(outFile); } catch { /* noop */ }
         h.cleanup();

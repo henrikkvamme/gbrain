@@ -655,8 +655,12 @@ describeBoth('Engine parity — federated sourceIds[] secondary reads (#2200)', 
   }, 90_000);
 
   afterAll(async () => {
-    await pgliteEngine.disconnect();
-    await teardownDB();
+    try {
+      await pgEngine.executeRaw(`DELETE FROM sources WHERE id = 'beta'`);
+    } finally {
+      await pgliteEngine.disconnect();
+      await teardownDB();
+    }
   }, 30_000);
 
   test('getTags identical under sourceIds[]', async () => {

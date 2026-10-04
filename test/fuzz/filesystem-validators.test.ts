@@ -12,11 +12,11 @@
  * outside the dir, which is exactly the contract we want to fuzz.
  */
 
-import { describe, test, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import fc from 'fast-check';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, relative, isAbsolute } from 'node:path';
 
 import { validateUploadPath } from '../../src/core/operations.ts';
 
@@ -43,14 +43,26 @@ beforeEach(() => {
 });
 
 describe('validateUploadPath fuzz (fs-backed)', () => {
+  test('real files inside the box succeed and a readable sibling is rejected', () => {
+    expect(validateUploadPath(join(confinementDir, 'safe.txt'), confinementDir)).toBe(realpathSync(join(confinementDir, 'safe.txt')));
+    const outside = join(baseTmpRoot, 'outside.txt');
+    writeFileSync(outside, 'outside');
+    expect(() => validateUploadPath(outside, confinementDir)).toThrow();
+  });
+
   test('arbitrary relative paths: never wedges, never escapes confinement', () => {
     fc.assert(
       fc.property(fc.string({ minLength: 0, maxLength: 200 }), (relPath) => {
+        let real: string;
         try {
-          validateUploadPath(confinementDir, relPath);
+          real = validateUploadPath(resolve(confinementDir, relPath), confinementDir);
         } catch {
-          /* throwing is the expected behavior for traversal / invalid input */
+          return; // Invalid or nonexistent paths must be rejected.
         }
+        const rel = relative(realpathSync(confinementDir), real);
+        expect(rel).not.toBe('');
+        expect(rel.startsWith('..')).toBe(false);
+        expect(isAbsolute(rel)).toBe(false);
         // The contract: function returns without throwing OR throws. Either is fine.
         // What we're ruling out: process crash, infinite loop (caught by fast-check
         // run timeout), or silent path-escape (which would be a security bug — the
@@ -75,7 +87,7 @@ describe('validateUploadPath fuzz (fs-backed)', () => {
       fc.property(traversalProbe, (probe) => {
         let threw = false;
         try {
-          validateUploadPath(confinementDir, probe);
+          validateUploadPath(resolve(confinementDir, probe), confinementDir);
         } catch {
           threw = true;
         }
@@ -114,7 +126,7 @@ describe('validateUploadPath fuzz (fs-backed)', () => {
       symlinkSync(tmpdir(), linkPath);
       let threw = false;
       try {
-        validateUploadPath(confinementDir, 'evil-link');
+        validateUploadPath(linkPath, confinementDir);
       } catch {
         threw = true;
       }

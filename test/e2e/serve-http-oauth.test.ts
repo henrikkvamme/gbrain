@@ -14,6 +14,9 @@
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { hasDatabase } from './helpers.ts';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 const skip = !hasDatabase();
 const describeE2E = skip ? describe.skip : describe;
@@ -27,6 +30,7 @@ const BASE = `http://localhost:${PORT}`;
 
 describeE2E('serve-http OAuth 2.1 E2E (v0.26.1 + v0.26.2 + v0.26.3)', () => {
   let serverProcess: ReturnType<typeof import('child_process').spawn> | null = null;
+  let serverCwd: string;
   let clientId: string | undefined;
   let clientSecret: string | undefined;
   // DCR-registered clients accumulate here so afterAll can revoke them too
@@ -62,15 +66,23 @@ describeE2E('serve-http OAuth 2.1 E2E (v0.26.1 + v0.26.2 + v0.26.3)', () => {
     clientId = idMatch[1];
     clientSecret = secretMatch[1];
 
+    // Exercise the on-disk SPA beneath a hidden ancestor, as in managed
+    // worktrees. The asset root itself is visible; dotfiles inside it stay denied.
+    serverCwd = mkdtempSync(join(tmpdir(), '.gbrain-http-spa-'));
+    const dist = join(serverCwd, 'admin', 'dist');
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(join(dist, 'index.html'), '<!doctype html><title>GBrain Admin</title>');
+    writeFileSync(join(dist, '.secret'), 'fixture-secret');
+
     // Start the HTTP server. v0.26.2 adds --enable-dcr so the /register
     // endpoint is reachable for the DCR response-shape test.
     serverProcess = spawn('bun', [
-      'run', 'src/cli.ts', 'serve', '--http',
+      'run', resolve('src/cli.ts'), 'serve', '--http',
       '--port', String(PORT),
       '--public-url', `http://localhost:${PORT}`,
       '--enable-dcr',
     ], {
-      cwd: process.cwd(),
+      cwd: serverCwd,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -98,6 +110,7 @@ describeE2E('serve-http OAuth 2.1 E2E (v0.26.1 + v0.26.2 + v0.26.3)', () => {
       await new Promise(r => setTimeout(r, 1000));
       if (!serverProcess.killed) serverProcess.kill('SIGKILL');
     }
+    if (serverCwd) rmSync(serverCwd, { recursive: true, force: true });
     // v0.26.2 cleanup contract: only revoke if registration succeeded
     // (clientId guard) and surface any cleanup failure to stderr without
     // throwing — a real test failure is more interesting than the cleanup
@@ -244,6 +257,7 @@ describeE2E('serve-http OAuth 2.1 E2E (v0.26.1 + v0.26.2 + v0.26.3)', () => {
   test('admin dashboard serves SPA index.html (not Express error)', async () => {
     const res = await fetch(`${BASE}/admin/`);
     const html = await res.text();
+    expect(res.status).toBe(200);
     expect(html).toContain('GBrain Admin');
     expect(html).not.toContain('<pre>Cannot GET');
   });
@@ -251,7 +265,16 @@ describeE2E('serve-http OAuth 2.1 E2E (v0.26.1 + v0.26.2 + v0.26.3)', () => {
   test('admin sub-routes serve SPA fallback', async () => {
     const res = await fetch(`${BASE}/admin/agents`);
     const html = await res.text();
+    expect(res.status).toBe(200);
     expect(html).toContain('GBrain Admin');
+  });
+
+  test('SPA fallback does not disclose dotfiles or turn admin API errors into HTML', async () => {
+    const secret = await fetch(`${BASE}/admin/.secret`);
+    expect(await secret.text()).not.toContain('fixture-secret');
+    const api = await fetch(`${BASE}/admin/api/missing-fixture-route`);
+    expect(api.status).not.toBe(200);
+    expect(await api.text()).not.toContain('<title>GBrain Admin</title>');
   });
 
   // v0.36.1.x #1076: GET /mcp must return 405 (Method Not Allowed) per the

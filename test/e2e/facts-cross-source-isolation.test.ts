@@ -16,7 +16,14 @@ beforeAll(async () => {
   await engine.executeRaw(`INSERT INTO sources (id, name, config) VALUES ('alpha', 'Alpha', '{}'::jsonb) ON CONFLICT DO NOTHING`);
   await engine.executeRaw(`INSERT INTO sources (id, name, config) VALUES ('beta',  'Beta',  '{}'::jsonb) ON CONFLICT DO NOTHING`);
 });
-afterAll(async () => { if (RUN) await teardownDB(); });
+afterAll(async () => {
+  if (!RUN) return;
+  try {
+    await getEngine().executeRaw(`DELETE FROM sources WHERE id IN ('alpha', 'beta', 'eph-pg')`);
+  } finally {
+    await teardownDB();
+  }
+});
 
 d('facts cross-source isolation (Postgres)', () => {
   test('listFactsByEntity scopes by source_id', async () => {

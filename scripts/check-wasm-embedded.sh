@@ -27,6 +27,14 @@ trap 'rm -f "$OUT_BIN"' EXIT
 # chunker + WASM path resolution, not unrelated CLI wiring.
 bun build --compile --outfile "$OUT_BIN" scripts/chunker-smoketest.ts >/dev/null 2>&1
 
+# Bun appends the embedded assets after linking. On Darwin this can leave the
+# compiled Mach-O's ad-hoc signature invalid. Sign only this disposable probe
+# after compilation, then verify it before executing the real semantic check.
+if [ "$(uname -s)" = "Darwin" ]; then
+  codesign --force --sign - "$OUT_BIN" >/dev/null 2>&1
+  codesign --verify --strict "$OUT_BIN"
+fi
+
 # Run it and capture JSON output.
 OUTPUT="$("$OUT_BIN" 2>&1)"
 
