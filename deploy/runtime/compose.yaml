@@ -52,7 +52,13 @@ services:
       ollama:
         condition: service_started
   ollama:
-    image: ${OLLAMA_IMAGE:?Pin the existing Ollama release by digest}
+    image: ${OLLAMA_IMAGE:?Pin the verified Ollama closure image by registry digest}
+    user: "${GBRAIN_UID:-1001}:${GBRAIN_GID:-1001}"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     restart: unless-stopped
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
@@ -61,6 +67,7 @@ services:
       - type: bind
         source: ${OLLAMA_MODEL_PATH:?Existing model directory is required}
         target: /models
+        read_only: true
         bind:
           create_host_path: false
     networks: [brain-private]

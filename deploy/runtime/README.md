@@ -21,7 +21,8 @@ docker build -f deploy/runtime/Dockerfile -t your-registry/brain:reviewed-commit
 Bun and its dependency lock match the deployed product. Install scripts are
 blocked because the package postinstall can migrate a brain. The source runtime
 keeps dynamic imports, schema SQL, WASM assets and embedded admin assets available.
-Root supplies a pinned Ollama image digest matching the existing release. No
+Root supplies the digest of the [verified Nix-closure Ollama image](ollama/README.md),
+preserving the existing CPU runtime rather than resolving a release tag. No
 model bootstrap download runs in this deployment.
 
 `compose.yaml` is a Dokploy Compose template. Root supplies these settings:
@@ -31,7 +32,7 @@ model bootstrap download runs in this deployment.
 | `GBRAIN_DATA_ROOT` | Existing product directory, mounted at the identical absolute path |
 | `GBRAIN_HOST_WRITER_LOCK` | Existing shared host flock file, mounted at `/run/brain/writer.lock` |
 | `GBRAIN_UID`, `GBRAIN_GID` | Existing storage owner, defaults 1001:1001 |
-| `OLLAMA_IMAGE` | Pinned existing release by digest |
+| `OLLAMA_IMAGE` | Verified closure image pinned by registry manifest digest |
 | `OLLAMA_MODEL_PATH`, `OLLAMA_MODEL` | Existing model store and exact model tag |
 | `GBRAIN_PUBLIC_URL` | Private HTTPS issuer URL for existing OAuth/MCP clients |
 | `GBRAIN_ADMIN_BOOTSTRAP_TOKEN` | Preserved or root-provisioned admin secret; never printed |

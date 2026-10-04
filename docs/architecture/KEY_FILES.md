@@ -496,5 +496,7 @@ schema_pack_writability, schema_pack_mutation_audit).
 
 ## Product native maintenance boundary
 
+- `deploy/runtime/ollama/{closure.json,closure.nix,image.py}` pin, import and verify the exact Ollama CPU closure and produce a deterministic, store-independent runtime image. `deploy/runtime/ollama/README.md` describes provenance, isolated inventory probes and the registry digest handoff.
+
 - `deploy/runtime/native-{protocol,control,journal,relay,worker}.ts` and `process-owner.ts` define the opt-in protected product transport, immutable role/run/request identity, durable single-writer admission, Mac text-inference relay, existing native worker algorithms and restart drain proof. Consumer and recovery contract: `deploy/runtime/NATIVE_MAINTENANCE.md`.
 - `src/core/ai/native-maintenance-policy.ts` confines the admitted worker to its existing Mac Codex text-model/reasoning pairs; gateway chat/tools/expansion/OCR and subagent construction enforce it without changing saved configuration. Ordinary inference is unchanged when the flag is absent. Focused policy, protocol and kernel ownership proofs live in `test/runtime/native-*.test.ts`.

@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "version": "0.30.6",
+  "system": "x86_64-linux",
+  "binaryCache": "https://cache.nixos.org",
+  "storePath": "/nix/store/4nm6xwnkmwm8iipz8qcc505736n43ada-ollama-0.30.6",
+  "executable": "/nix/store/4nm6xwnkmwm8iipz8qcc505736n43ada-ollama-0.30.6/bin/ollama",
+  "closure": [
+    {
+      "path": "/nix/store/4nm6xwnkmwm8iipz8qcc505736n43ada-ollama-0.30.6",
+      "narSha256": "ba395657d67a030f362e6ddf6c0e7f4397292af53b097a68d41d7c28bc9e1f87",
+      "narBytes": 103694936,
+      "references": [
+        "/nix/store/8kvxvr3pmsypxiypq4g8zy13glnfr7nx-glibc-2.42-67",
+        "/nix/store/d8jrr4rj6827s0d5b9baqxrsyafqk6zd-iana-etc-20251215",
+        "/nix/store/ga3b95jkyvknam1nxl25r95nyk87ix25-tzdata-2026b",
+        "/nix/store/hngmi01i8wgi25a0byrxcn4ysz5j79mw-gcc-15.2.0-lib",
+        "/nix/store/xakkd7mhg6dindq35ji8smr4j9ypwpn7-mailcap-2.1.54"
+      ],
+      "deriver": "/nix/store/z95c8pn99y76qkcp8fzvj2p1f9q16g5l-ollama-0.30.6.drv"
+    },
+    {
+      "path": "/nix/store/7nww4d4yl7jzf66qllvyn61xb21vp7ry-gcc-15.2.0-libgcc",
+      "narSha256": "1a427356112d6961148343fdf80f50ab99d97b4d35b28c7297344d95250eefa3",
+      "narBytes": 197752,
+      "references": [],
+      "deriver": "/nix/store/qlb1647jp7grq5fgp66fhk5qr9rzr1j6-gcc-15.2.0.drv"
+    },
+    {
+      "path": "/nix/store/8kvxvr3pmsypxiypq4g8zy13glnfr7nx-glibc-2.42-67",
+      "narSha256": "bebc77eb57a447f344455d79eedc2e6d4e76d538561c227d69df0eeec5440c3e",
+      "narBytes": 35089528,
+      "references": [
+        "/nix/store/8kvxvr3pmsypxiypq4g8zy13glnfr7nx-glibc-2.42-67",
+        "/nix/store/aasbksznz37vw5pb26wq86209q5cmza8-xgcc-15.2.0-libgcc",
+        "/nix/store/zlvydh6q1rv1jza79b21yhi07ic0dkkg-libidn2-2.3.8"
+      ],
+      "deriver": "/nix/store/8ky82wqb2hrwww20kbq2v3vlwvn0bddi-glibc-2.42-67.drv"
+    },
+    {
+      "path": "/nix/store/aasbksznz37vw5pb26wq86209q5cmza8-xgcc-15.2.0-libgcc",
+      "narSha256": "bb680342acc24ea164c86e6fbf8964ff534934de4a5f4f342126331d255abe26",
+      "narBytes": 197672,
+      "references": [],
+      "deriver": "/nix/store/gpnbaf3km91p4518kzqxvdcjdwnwi89z-xgcc-15.2.0.drv"
+    },
+    {
+      "path": "/nix/store/d8jrr4rj6827s0d5b9baqxrsyafqk6zd-iana-etc-20251215",
+      "narSha256": "33a5ca4647c1e73a5145c91b60299e1fffca2f554f921bc36ff99fae36ba3224",
+      "narBytes": 571168,
+      "references": [
+        "/nix/store/d8jrr4rj6827s0d5b9baqxrsyafqk6zd-iana-etc-20251215"
+      ],
+      "deriver": "/nix/store/dmi1a97yryryysv51kb8gaxias1h0aqy-iana-etc-20251215.drv"
+    },
+    {
+      "path": "/nix/store/ga3b95jkyvknam1nxl25r95nyk87ix25-tzdata-2026b",
+      "narSha256": "988c98902b0b7e0414b5759d7144559f6d8ea2da1ba52d960860a9004b0de4e0",
+      "narBytes": 2148320,
+      "references": [],
+      "deriver": "/nix/store/v4j26qq0ybc6rb3fjh6bc6m86l0fwn0s-tzdata-2026b.drv"
+    },
+    {
+      "path": "/nix/store/hngmi01i8wgi25a0byrxcn4ysz5j79mw-gcc-15.2.0-lib",
+      "narSha256": "4c790e12bef90176bce1311ab62bd5666a5d7cfd573953f32819d388d7636c69",
+      "narBytes": 10313656,
+      "references": [
+        "/nix/store/7nww4d4yl7jzf66qllvyn61xb21vp7ry-gcc-15.2.0-libgcc",
+        "/nix/store/8kvxvr3pmsypxiypq4g8zy13glnfr7nx-glibc-2.42-67",
+        "/nix/store/hngmi01i8wgi25a0byrxcn4ysz5j79mw-gcc-15.2.0-lib"
+      ],
+      "deriver": "/nix/store/qlb1647jp7grq5fgp66fhk5qr9rzr1j6-gcc-15.2.0.drv"
+    },
+    {
+      "path": "/nix/store/ipz4lbivx3q7gr79130d6g5ix35vibnw-libunistring-1.4.2",
+      "narSha256": "d7d9f55c19ceb85dd9805a89a627aebaf2ed563ca907b7f637b0591fb493a152",
+      "narBytes": 2078944,
+      "references": [
+        "/nix/store/ipz4lbivx3q7gr79130d6g5ix35vibnw-libunistring-1.4.2"
+      ],
+      "deriver": "/nix/store/y6w1db9hfbyq855k0cziz05zxfabc5z2-libunistring-1.4.2.drv"
+    },
+    {
+      "path": "/nix/store/xakkd7mhg6dindq35ji8smr4j9ypwpn7-mailcap-2.1.54",
+      "narSha256": "ff6a647601caa1d1032e49d844e9ee48dd05d7b9be059e00ca63b9d6f06972f5",
+      "narBytes": 119360,
+      "references": [],
+      "deriver": "/nix/store/psal6i1indpkd2kh4x2q3j8w8xbbpkqw-mailcap-2.1.54.drv"
+    },
+    {
+      "path": "/nix/store/zlvydh6q1rv1jza79b21yhi07ic0dkkg-libidn2-2.3.8",
+      "narSha256": "8c43ed6d0f82da8be3c66ea79c09c30f32f03eb669ea16937108c6dd1e8d9095",
+      "narBytes": 368176,
+      "references": [
+        "/nix/store/ipz4lbivx3q7gr79130d6g5ix35vibnw-libunistring-1.4.2",
+        "/nix/store/zlvydh6q1rv1jza79b21yhi07ic0dkkg-libidn2-2.3.8"
+      ],
+      "deriver": "/nix/store/sjq210j20ij4gf71kz3xy82w8284f42l-libidn2-2.3.8.drv"
+    }
+  ]
+}
