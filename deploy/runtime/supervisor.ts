@@ -1,7 +1,10 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync, mkdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ExclusiveLifecycle } from './lifecycle';
-import { processOwner } from './process-owner';
+import { processOwner, durableProcessOwner, proveDurableOwnerDrained } from './process-owner';
+import { NativeControl } from './native-control';
+import { NATIVE_LIMITS } from './native-protocol';
 import { publishedBundles, slotFor, validatePersistence } from './state';
 
 type Child = ReturnType<typeof Bun.spawn>;
@@ -59,11 +62,53 @@ export async function runRuntime() {
     const owner = processOwner(child);
     return { stop: async () => { await owner.stop(); if (child.exitCode !== 0) throw new Error('HTTP owner did not close cleanly'); server = undefined; } };
   });
+  let nativeServer: ReturnType<typeof Bun.serve> | undefined;
+  let native: NativeControl | undefined;
+  if (enabled('GBRAIN_ENABLE_NATIVE')) {
+    const credentials = { brain: process.env.GBRAIN_NATIVE_BRAIN!, client: process.env.GBRAIN_NATIVE_CLIENT!, scheduler: process.env.GBRAIN_NATIVE_SCHEDULER_TOKEN!, executor: process.env.GBRAIN_NATIVE_EXECUTOR_TOKEN!, relay: randomUUID() };
+    if (!credentials.brain || !credentials.client) throw new Error('Native identity is required');
+    native = new NativeControl(join(root, 'gbrain-runtime/.native-maintenance.json'), credentials, async (record, control) => {
+      let result: unknown;
+      maintenance = true;
+      try {
+        await lifecycle.run(async () => {
+          await freeDisk();
+          if (shuttingDown || record.expires <= Date.now()) throw new Error('Native run interrupted');
+          if (record.run.action === 'communications-dream' && (state.gmail?.generation !== record.run.reconciliation?.generation || state.gmail?.revision !== record.run.reconciliation?.revision)) throw new Error('Stale reconciliation');
+          const runDir = join(root, 'gbrain-runtime/native-runs', record.epoch);
+          mkdirSync(runDir, { recursive: true, mode: 0o700 });
+          const output = join(runDir, 'result.json');
+          const env = Object.fromEntries(['PATH', 'HOME', 'GBRAIN_HOME', 'OLLAMA_BASE_URL', 'SSL_CERT_FILE', 'LANG', 'LC_ALL'].flatMap(k => process.env[k] ? [[k, process.env[k]!]] : []));
+          control.owner(record, { launching: true });
+          const child = Bun.spawn(['bun', '/app/deploy/runtime/native-worker.ts'], { detached: true, stdin: 'pipe', stdout: 'ignore', stderr: 'ignore', env: { ...env, GBRAIN_NATIVE_MAINTENANCE: '1', GBRAIN_CODEX_BIN: '/app/deploy/runtime/native-relay.sh', GBRAIN_NATIVE_RUN: record.run.id, GBRAIN_NATIVE_EPOCH: record.epoch, GBRAIN_NATIVE_OUTPUT: output, GBRAIN_NATIVE_BRAIN: credentials.brain, GBRAIN_NATIVE_CLIENT: credentials.client, GBRAIN_NATIVE_RELAY_TOKEN: credentials.relay, GBRAIN_RETRIEVAL_REFLEX: 'false' } });
+          // Publish boot + /proc start-time identity before the child receives work.
+          const owner = processOwner(child);
+          const exited = lifecycle.runChild(owner); // Own cleanup even if fence persistence fails.
+          // Awaited below; suppress premature unhandled rejection while recording the fence.
+          void exited.catch(() => {});
+          const timeout = setTimeout(() => { void lifecycle.stopJob().catch(() => {}); }, Math.min(NATIVE_LIMITS.runMs, record.expires - Date.now()));
+          try {
+            control.owner(record, durableProcessOwner(child).fence);
+            child.stdin.write(JSON.stringify(record.run)); child.stdin.end();
+            const code = await exited; // Includes verified process-group drain.
+            control.drained(record);
+            if (code !== 0) throw new Error('Native child failed');
+            const text = readFileSync(output, 'utf8');
+            if (Buffer.byteLength(text) > NATIVE_LIMITS.result) throw new Error('Native output too large');
+            result = JSON.parse(text);
+          } finally { child.stdin.end(); clearTimeout(timeout); }
+        });
+      } finally { maintenance = false; }
+      return result;
+    });
+    await native.recover(proveDurableOwnerDrained); // Before HTTP opens the engine.
+    nativeServer = Bun.serve({ hostname: '0.0.0.0', port: 3133, maxRequestBodySize: NATIVE_LIMITS.wire, idleTimeout: 15, fetch: request => native!.handle(request) });
+  }
   const health = Bun.serve({
     hostname: '127.0.0.1', port: 3132,
     async fetch(request) {
       if (new URL(request.url).pathname !== '/health') return new Response(null, { status: 404 });
-      let ok = !shuttingDown && !lifecycle.ownershipUncertain && (maintenance || !!server && server.exitCode === null);
+      let ok = !shuttingDown && !native?.uncertain && !lifecycle.ownershipUncertain && (maintenance || !!server && server.exitCode === null);
       if (ok && !maintenance) {
         try { ok = (await fetch('http://127.0.0.1:3131/health', { signal: AbortSignal.timeout(4000) })).ok; }
         catch { ok = false; }
@@ -75,6 +120,7 @@ export async function runRuntime() {
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    native?.close();
     // close() interrupts a running child before waiting on its exit. Retry even
     // if inspection fails while the parent is still alive and runChild awaits it.
     closing = (async () => {
@@ -95,6 +141,7 @@ export async function runRuntime() {
     while (!shuttingDown) {
       if (server?.exitCode !== null && !maintenance) throw new Error('HTTP owner exited');
       const now = Date.now();
+      await native?.tick();
       for (const name of ['seafile', 'gmail'] as const) {
         if (shuttingDown || !(name === 'seafile' ? seafile : gmail)) continue;
         // Stagger hourly work at +5m and Gmail at +2m, with a 5m boot delay.
@@ -149,7 +196,7 @@ export async function runRuntime() {
     shutdown();
     // Keep the external flock held while cleanup is uncertain. Container
     // restart must not replace this supervisor while an old writer survives.
-    try { await closing; } finally { health.stop(true); }
+    try { await closing; } finally { health.stop(true); nativeServer?.stop(true); }
   }
 }
 

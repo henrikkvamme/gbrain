@@ -23,6 +23,7 @@
 
 import { embed as aiEmbed, embedMany, generateObject, generateText, jsonSchema } from 'ai';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { assertNativeMaintenanceInference } from './native-maintenance-policy.ts';
 import { listRecipes } from './recipes/index.ts';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
@@ -2207,6 +2208,7 @@ const ExpansionSchema = z.object({
  * Caller is responsible for sanitizing the query (prompt-injection boundary stays in expansion.ts).
  */
 export async function expand(query: string): Promise<string[]> {
+  assertNativeMaintenanceInference('expansion');
   if (!query || !query.trim()) return [query];
   if (!isAvailable('expansion')) return [query];
 
@@ -2270,6 +2272,7 @@ export async function expand(query: string): Promise<string[]> {
  * keeping the gateway focused on the LLM call.
  */
 export async function generateOcrText(imageBytes: Buffer, mime: string): Promise<string> {
+  assertNativeMaintenanceInference('ocr');
   if (!isAvailable('expansion')) return '';
   const { model } = await resolveExpansionProvider(getExpansionModel());
   const base64 = imageBytes.toString('base64');
@@ -2845,6 +2848,7 @@ async function classifyGatewayGuardrail(input: {
 export async function chat(opts: ChatOpts): Promise<ChatResult> {
   const tracker = __budgetStore.getStore() ?? null;
   const modelStrEarly = opts.model ?? getChatModel();
+  assertNativeMaintenanceInference(opts.tools?.length ? 'tools' : 'chat', modelStrEarly);
 
   // Guardrail seam: classify ONLY the latest user message before provider
   // inference. Observe-only / fail-open; no-op without a registered guardrail.
@@ -3179,6 +3183,7 @@ export interface ToolLoopResult {
  * via `__setChatTransportForTests` without any DB.
  */
 export async function toolLoop(opts: ToolLoopOpts): Promise<ToolLoopResult> {
+  assertNativeMaintenanceInference('tools');
   const maxTurns = opts.maxTurns ?? 20;
   const maxTokens = opts.maxTokens ?? 4096;
   const handlers = opts.toolHandlers;

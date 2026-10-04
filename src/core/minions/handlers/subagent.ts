@@ -25,6 +25,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { assertNativeMaintenanceInference } from '../../ai/native-maintenance-policy.ts';
 import type { MinionJobContext, MinionJob } from '../types.ts';
 import { UnrecoverableError } from '../types.ts';
 import type {
@@ -159,6 +160,7 @@ interface PersistedToolExec {
  * cost gate and `PROTECTED_JOB_NAMES` gates submission.
  */
 export function makeSubagentHandler(deps: SubagentDeps) {
+  assertNativeMaintenanceInference('tools');
   const engine = deps.engine;
   // sdk.messages IS the MessagesClient-shaped object. The v0.16.0 bug was
   // casting new Anthropic() (top level) to MessagesClient, but .create()

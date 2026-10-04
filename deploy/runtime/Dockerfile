@@ -17,7 +17,7 @@ COPY skills ./skills
 COPY deploy/runtime ./deploy/runtime
 # Match ownership of existing product persistence, not an agent account's tools.
 USER 1001:1001
-EXPOSE 3131 3132
+EXPOSE 3131 3132 3133
 ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/app/deploy/runtime/entrypoint.sh"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD bun -e 'const r = await fetch("http://127.0.0.1:3132/health"); process.exit(r.ok ? 0 : 1)'

@@ -22,6 +22,11 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:?Existing model tag is required}
       GBRAIN_ENABLE_SEAFILE: ${GBRAIN_ENABLE_SEAFILE:-false}
       GBRAIN_ENABLE_GMAIL_APPLY: ${GBRAIN_ENABLE_GMAIL_APPLY:-false}
+      GBRAIN_ENABLE_NATIVE: ${GBRAIN_ENABLE_NATIVE:-false}
+      GBRAIN_NATIVE_BRAIN: ${GBRAIN_NATIVE_BRAIN:-}
+      GBRAIN_NATIVE_CLIENT: ${GBRAIN_NATIVE_CLIENT:-}
+      GBRAIN_NATIVE_SCHEDULER_TOKEN: ${GBRAIN_NATIVE_SCHEDULER_TOKEN:-}
+      GBRAIN_NATIVE_EXECUTOR_TOKEN: ${GBRAIN_NATIVE_EXECUTOR_TOKEN:-}
       SEAFILE_HOST: ${SEAFILE_HOST:-}
       SEAFILE_SINCE: ${SEAFILE_SINCE:-}
       SEAFILE_GBRAIN_REPO_TOKEN: ${SEAFILE_GBRAIN_REPO_TOKEN:-}
@@ -41,6 +46,7 @@ services:
           create_host_path: false
     expose:
       - "3131"
+      - "3133"
     networks: [brain-private]
     depends_on:
       ollama:
