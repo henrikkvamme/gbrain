@@ -1,0 +1,8 @@
+.git
+node_modules
+.context
+.env*
+.gbrain*
+bin
+test
+admin/node_modules

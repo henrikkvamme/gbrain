@@ -1,0 +1,62 @@
+# Dokploy Compose template. Root supplies mounts and secrets before deployment.
+# Deploy from this repository/branch with build context at the repository root.
+services:
+  brain:
+    build:
+      context: ../..
+      dockerfile: deploy/runtime/Dockerfile
+    deploy:
+      replicas: 1
+      update_config:
+        order: stop-first
+    user: "${GBRAIN_UID:-1001}:${GBRAIN_GID:-1001}"
+    restart: unless-stopped
+    stop_grace_period: 90s
+    environment:
+      GBRAIN_DATA_ROOT: ${GBRAIN_DATA_ROOT:?Existing product data root is required}
+      GBRAIN_WRITER_LOCK: /run/brain/writer.lock
+      GBRAIN_PUBLIC_URL: ${GBRAIN_PUBLIC_URL:?Private HTTPS issuer is required}
+      GBRAIN_HTTP_CORS_ORIGIN: ${GBRAIN_HTTP_CORS_ORIGIN:-}
+      GBRAIN_ADMIN_BOOTSTRAP_TOKEN: ${GBRAIN_ADMIN_BOOTSTRAP_TOKEN:?Preserve or provision an admin token}
+      OLLAMA_BASE_URL: http://ollama:11434/v1
+      OLLAMA_MODEL: ${OLLAMA_MODEL:?Existing model tag is required}
+      GBRAIN_ENABLE_SEAFILE: ${GBRAIN_ENABLE_SEAFILE:-false}
+      GBRAIN_ENABLE_GMAIL_APPLY: ${GBRAIN_ENABLE_GMAIL_APPLY:-false}
+      SEAFILE_HOST: ${SEAFILE_HOST:-}
+      SEAFILE_SINCE: ${SEAFILE_SINCE:-}
+      SEAFILE_GBRAIN_REPO_TOKEN: ${SEAFILE_GBRAIN_REPO_TOKEN:-}
+      PLANET_EXPRESS_URL: ${PLANET_EXPRESS_URL:-}
+      PLANET_EXPRESS_TOKEN: ${PLANET_EXPRESS_TOKEN:-}
+    volumes:
+      # Identical container path preserves database_path and source local_path.
+      - type: bind
+        source: ${GBRAIN_DATA_ROOT:?}
+        target: ${GBRAIN_DATA_ROOT:?}
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GBRAIN_HOST_WRITER_LOCK:?Existing shared lock file is required}
+        target: /run/brain/writer.lock
+        bind:
+          create_host_path: false
+    expose:
+      - "3131"
+    networks: [brain-private]
+    depends_on:
+      ollama:
+        condition: service_started
+  ollama:
+    image: ${OLLAMA_IMAGE:?Pin the existing Ollama release by digest}
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_MODELS: /models
+    volumes:
+      - type: bind
+        source: ${OLLAMA_MODEL_PATH:?Existing model directory is required}
+        target: /models
+        bind:
+          create_host_path: false
+    networks: [brain-private]
+networks:
+  brain-private: {}
