@@ -152,6 +152,34 @@ This is a cutover prerequisite, not permission to discard those features.
 
 ## Root cutover and rollback
 
+### Private ingress prerequisite
+
+Compose publishes HTTP/MCP (3131) and protected native control (3133) only on
+host IPv4 loopback. Ollama stays inside `brain-private`. A separately managed
+server-base Tailscale Serve declaration may terminate private HTTPS on those two
+ports and proxy to `http://127.0.0.1:3131` and `http://127.0.0.1:3133`. It must
+preserve other Serve endpoints and remain disabled until root approves cutover.
+Use the node's verified certificate DNS name, never an IP override, Funnel,
+wildcard host bind, unverified TLS or a public reverse proxy.
+
+Root must first inspect existing DB OAuth identity and preserve any existing
+issuer. If none exists, root supplies the selected private HTTPS origin as
+`GBRAIN_PUBLIC_URL`, and separately supplies the native HTTPS origin to the Mac
+consumer. Changing the transport does not remove MCP OAuth/token scope checks or
+native scheduler/executor role authorization. Native and ingestion flags remain
+false until their independent acceptance gates pass. Verify unauthenticated and
+wrong-role requests are refused over the actual private route, not just localhost.
+Loopback publication also allows local host callers; it does not grant them
+authenticated access or turn remote callers into trusted CLI callers.
+
+Before enabling ingress, verify Tailscale is running, HTTPS certificates and
+tailnet port grants are ready, the service user has existing operator permission,
+and both owned ports are unused. Preserve a Serve status snapshot without
+changing global configuration. On rollback stop only the managed ingress service
+and verify only these two routes disappeared; never use `tailscale serve reset`.
+Ingress activation, runtime deployment, writer fencing and schedule enablement
+are separate root-owned steps.
+
 1. Inventory all callers, source paths, ownership, active jobs, existing DB schema,
    search/model settings, OAuth grants and Ollama model blob digests. Record only
    non-secret metadata. Verify Mac transport and scheduled work before retirement.

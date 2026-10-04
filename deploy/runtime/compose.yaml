@@ -47,6 +47,11 @@ services:
     expose:
       - "3131"
       - "3133"
+    # Private TLS termination is managed separately by the server base.
+    # Never publish these authenticated listeners on a wildcard host address.
+    ports:
+      - "127.0.0.1:3131:3131"
+      - "127.0.0.1:3133:3133"
     networks: [brain-private]
     depends_on:
       ollama:
