@@ -29,8 +29,14 @@ This divergence is intentional. Don't try to make them equal — the two scripts
 
 `bun run test:isolated` runs the sorted non-E2E manifest in fresh Bun processes,
 including slow and serial files. Each file has a 180-second outer cap and each
-test a 120-second cap. It continues after failures and exits nonzero for failed
-assertions, nonzero process exits, timeouts, or missing summaries. The aggregate
+test a 120-second cap. Each invocation owns a separate POSIX process group.
+Before advancing, the runner kills that group and waits up to two seconds for
+its processes to disappear, including workers left by successful files. Cleanup
+failure stops the run. Workers must inherit the test's process group rather than
+start detached sessions. SIGINT/SIGTERM clean up the active group and stop the
+partial run with a nonzero exit. It continues after ordinary failures and exits
+nonzero for failed assertions, nonzero process exits, timeouts, interruptions,
+or missing summaries. The aggregate
 counts, per-file exits, manifest and full logs live in `.context/unit-isolated/`.
 `--dry-run-list` prints the exact manifest without running it.
 
@@ -48,7 +54,8 @@ A reviewed runtime image with identical frozen dependencies can be reused with
 `--build-arg TEST_BASE_IMAGE=<image>` to avoid installing them twice. Supply a
 source snapshot in a disposable writable checkout at runtime, link its
 `node_modules` to `/app/node_modules`, and initialize its local Git fixture.
-Run `bun run test:isolated` with `--network none --memory=4g --cpus=2`, a temporary
+Run `bun run test:isolated` with `--init --network none --memory=4g --cpus=2` (PID 1 must reap
+orphaned workers), a temporary
 HOME and explicit fork LLMS URL base. Keep receipts outside the container and
 remove the container afterward. No host brain or production home is mounted.
 
