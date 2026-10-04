@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ExclusiveLifecycle } from './lifecycle';
+import { processOwner } from './process-owner';
 import { publishedBundles, slotFor, validatePersistence } from './state';
 
 type Child = ReturnType<typeof Bun.spawn>;
@@ -50,46 +51,19 @@ export async function runRuntime() {
   let shuttingDown = false;
   let maintenance = false;
   let server: Child | undefined;
-  let job: Child | undefined;
-  // A tracked session confines job descendants so timeout/shutdown cannot leave a writer.
+  // Birth-fenced ownership remains retryable even after the parent exits.
   const spawn = (args: string[]) => Bun.spawn(args, { detached: true, stdout: 'ignore', stderr: 'ignore' });
-  const signalGroup = (child: Child, signal: NodeJS.Signals) => {
-    try { process.kill(-child.pid, signal); } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
-    }
-  };
-  const stop = async (child: Child) => {
-    // Signal the whole group even if its parent has already exited.
-    signalGroup(child, 'SIGTERM');
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([child.exited, new Promise<void>((resolve) => {
-        timer = setTimeout(() => { signalGroup(child, 'SIGKILL'); resolve(); }, 30_000);
-      })]);
-      await child.exited;
-      // Sweep descendants after graceful parent exit before starting another owner.
-      signalGroup(child, 'SIGKILL');
-      const deadline = Date.now() + 10_000;
-      while (true) {
-        try { process.kill(-child.pid, 0); } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ESRCH') break;
-          throw error;
-        }
-        if (Date.now() > deadline) throw new Error('Child process group did not drain');
-        await Bun.sleep(20);
-      }
-    } finally { if (timer) clearTimeout(timer); }
-  };
   const lifecycle = new ExclusiveLifecycle(async () => {
     server = spawn(['bun', '/app/deploy/runtime/http-worker.ts']);
     const child = server;
-    return { stop: async () => { await stop(child); if (child.exitCode !== 0) throw new Error('HTTP owner did not close cleanly'); server = undefined; } };
+    const owner = processOwner(child);
+    return { stop: async () => { await owner.stop(); if (child.exitCode !== 0) throw new Error('HTTP owner did not close cleanly'); server = undefined; } };
   });
   const health = Bun.serve({
     hostname: '127.0.0.1', port: 3132,
     async fetch(request) {
       if (new URL(request.url).pathname !== '/health') return new Response(null, { status: 404 });
-      let ok = !shuttingDown && (maintenance || !!server && server.exitCode === null);
+      let ok = !shuttingDown && !lifecycle.ownershipUncertain && (maintenance || !!server && server.exitCode === null);
       if (ok && !maintenance) {
         try { ok = (await fetch('http://127.0.0.1:3131/health', { signal: AbortSignal.timeout(4000) })).ok; }
         catch { ok = false; }
@@ -97,10 +71,21 @@ export async function runRuntime() {
       return Response.json({ ok, maintenance, lastJob: state.lastJob ?? null }, { status: ok ? 200 : 503 });
     },
   });
+  let closing: Promise<void> | undefined;
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
-    if (job) void stop(job);
+    // close() interrupts a running child before waiting on its exit. Retry even
+    // if inspection fails while the parent is still alive and runChild awaits it.
+    closing = (async () => {
+      while (true) {
+        try { await lifecycle.close(); break; }
+        catch {
+          console.error('runtime cleanup uncertain; holding writer lock and retrying');
+          await Bun.sleep(1000);
+        }
+      }
+    })();
   };
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
@@ -123,15 +108,16 @@ export async function runRuntime() {
           await lifecycle.run(async () => {
             await freeDisk();
             const run = async (args: string[], timeoutMs: number) => {
-              job = spawn(['/bin/bash', '/app/deploy/runtime/jobs.sh', ...args]);
-              const child = job;
-              const timeout = setTimeout(() => { void stop(child); }, timeoutMs);
+              if (shuttingDown) throw new Error('Job interrupted by shutdown');
+              const child = spawn(['/bin/bash', '/app/deploy/runtime/jobs.sh', ...args]);
+              const owner = processOwner(child);
+              const timeout = setTimeout(() => {
+                void lifecycle.stopJob().catch(() => { /* The handoff retries and fails closed. */ });
+              }, timeoutMs);
               try {
-                const rc = await child.exited;
-                // Parent exit must not leave grandchildren holding the brain.
-                await stop(child);
+                const rc = await lifecycle.runChild(owner);
                 if (rc !== 0) throw new Error('Ingestion child failed');
-              } finally { clearTimeout(timeout); job = undefined; }
+              } finally { clearTimeout(timeout); }
               if (shuttingDown) throw new Error('Job interrupted by shutdown');
             };
             if (name === 'seafile') await run(['seafile'], 900_000);
@@ -161,8 +147,9 @@ export async function runRuntime() {
     }
   } finally {
     shutdown();
-    if (job) await stop(job);
-    try { await lifecycle.close(); } finally { health.stop(true); }
+    // Keep the external flock held while cleanup is uncertain. Container
+    // restart must not replace this supervisor while an old writer survives.
+    try { await closing; } finally { health.stop(true); }
   }
 }
 
@@ -180,6 +167,7 @@ if (import.meta.main) runRuntime().catch((error) => {
     'Model inventory tag differs from the existing embedding configuration',
     'Existing Ollama model is missing; no automatic pull is permitted',
     'HTTP owner exited', 'HTTP owner did not close cleanly', 'Child process group did not drain',
+    'Cannot verify child process identity', 'Child process identity changed',
   ];
   const message = error instanceof Error && known.includes(error.message) ? error.message : 'check persistence, lock, model inventory and schedule metadata';
   console.error(`runtime stopped: ${message}`);

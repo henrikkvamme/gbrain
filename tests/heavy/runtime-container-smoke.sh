@@ -60,6 +60,62 @@ docker exec "$name" mkdir -p /fixture/gbrain-runtime/.gbrain /fixture/gbrain-run
 chmod 0644 "$fixture/fixture.ts"
 docker exec -i "$name" sh -c 'cat > /fixture/fixture.ts' < "$fixture/fixture.ts"
 docker exec "$name" bun /fixture/fixture.ts > "$fixture/init.log" 2>&1
+# Real orphaned process group plus an injected cleanup failure after parent exit.
+# This does not open the fixture DB or call the scheduler/network services.
+cat > "$fixture/ownership.ts" <<'JS'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { ExclusiveLifecycle } from '/app/deploy/runtime/lifecycle.ts';
+import { processOwner } from '/app/deploy/runtime/process-owner.ts';
+let starts = 0;
+let attempts = 0;
+let allowDrain = false;
+const runtime = new ExclusiveLifecycle(async () => {
+  starts++;
+  return { stop: async () => {} };
+});
+await runtime.start();
+const child = Bun.spawn(['/bin/bash', '-c',
+  'sleep 300 & echo $! > /fixture/descendant.pid; while [ ! -f /fixture/parent-exit ]; do sleep 0.02; done'],
+  { detached: true, stdout: 'ignore', stderr: 'ignore' });
+const owner = processOwner(child);
+try {
+  const deadline = Date.now() + 5000;
+  while (!existsSync('/fixture/descendant.pid')) {
+    if (Date.now() > deadline) throw new Error('Descendant fixture did not start');
+    await Bun.sleep(20);
+  }
+  const descendant = Number(readFileSync('/fixture/descendant.pid', 'utf8').trim());
+  writeFileSync('/fixture/parent-exit', 'exit');
+  await child.exited;
+  if (!existsSync(`/proc/${descendant}/stat`)) throw new Error('No surviving descendant to test');
+  let failure: unknown;
+  try {
+    await runtime.run(async () => {
+      await runtime.runChild({ exited: child.exited, stop: async () => {
+        attempts++;
+        if (!allowDrain) throw new Error('Injected drain failure after parent exit');
+        await owner.stop();
+      } });
+    });
+  } catch (error) { failure = error; }
+  if (!(failure instanceof Error) || !failure.message.includes('Injected drain failure') || starts !== 1 || !runtime.ownershipUncertain) {
+    throw new Error('Failed drain admitted another HTTP owner');
+  }
+  let laterRan = false;
+  try { await runtime.run(async () => { laterRan = true; }); } catch {}
+  if (laterRan || starts !== 1) throw new Error('Failed drain admitted later ingestion');
+  const beforeRetry = attempts;
+  allowDrain = true;
+  await runtime.close();
+  if (attempts <= beforeRetry || existsSync(`/proc/${descendant}/stat`) || starts !== 1) {
+    throw new Error('Retained cleanup did not drain the real descendant');
+  }
+} finally { allowDrain = true; await owner.stop(); await runtime.close(); }
+console.log('PASS: exited parent, surviving descendant, injected failed drain fences HTTP/jobs, shutdown retries and drains');
+JS
+docker exec -i "$name" sh -c 'cat > /fixture/ownership.ts' < "$fixture/ownership.ts"
+docker exec "$name" bun /fixture/ownership.ts > "$fixture/ownership.log" 2>&1
+cat "$fixture/ownership.log"
 before=$(docker exec "$name" sha256sum /fixture/gbrain-runtime/.gbrain/config.json | cut -d' ' -f1)
 # The fake service exposes inventory only. No inference endpoint exists.
 docker exec -d "$name" bun -e \

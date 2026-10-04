@@ -51,6 +51,78 @@ describe('exclusive container lifecycle', () => {
     await expect(runtime.close()).rejects.toThrow('stop failed');
   });
 
+  test('retains an exited ingestion parent when descendant drain fails and retries cleanup', async () => {
+    let starts = 0;
+    let stops = 0;
+    let drained = false;
+    let laterRan = false;
+    const runtime = new ExclusiveLifecycle(async () => {
+      starts++;
+      return { stop: async () => {} };
+    });
+    const child = {
+      exited: Promise.resolve(0),
+      stop: async () => {
+        stops++;
+        if (!drained) throw new Error('descendants did not drain');
+      },
+    };
+    await runtime.start();
+    await expect(runtime.run(async () => { await runtime.runChild(child); })).rejects.toThrow('descendants did not drain');
+    expect(starts).toBe(1);
+    expect(runtime.ownershipUncertain).toBe(true);
+    await expect(runtime.run(async () => { laterRan = true; })).rejects.toThrow('descendants did not drain');
+    expect(laterRan).toBe(false);
+    expect(starts).toBe(1);
+    const beforeClose = stops;
+    await expect(runtime.close()).rejects.toThrow('descendants did not drain');
+    expect(stops).toBeGreaterThan(beforeClose);
+    drained = true;
+    await runtime.close();
+    expect(runtime.ownershipUncertain).toBe(false);
+    expect(stops).toBeGreaterThan(beforeClose + 1);
+    expect(starts).toBe(1);
+  });
+
+  test('restarts HTTP after nonzero ingestion exit with verified descendant drain', async () => {
+    const events: string[] = [];
+    const runtime = new ExclusiveLifecycle(async () => {
+      events.push('http');
+      return { stop: async () => { events.push('http-stop'); } };
+    });
+    await runtime.start();
+    await expect(runtime.run(async () => {
+      const rc = await runtime.runChild({ exited: Promise.resolve(1), stop: async () => { events.push('drained'); } });
+      if (rc !== 0) throw new Error('ingestion failed');
+    })).rejects.toThrow('ingestion failed');
+    expect(events).toEqual(['http', 'http-stop', 'drained', 'http']);
+    await runtime.close();
+  });
+
+  test('shutdown can retry cleanup while the ingestion parent is still running', async () => {
+    let release!: (rc: number) => void;
+    let attempts = 0;
+    let starts = 0;
+    const exited = new Promise<number>(resolve => { release = resolve; });
+    const runtime = new ExclusiveLifecycle(async () => {
+      starts++;
+      return { stop: async () => {} };
+    });
+    await runtime.start();
+    const run = runtime.run(async () => {
+      await runtime.runChild({ exited, stop: async () => {
+        if (++attempts === 1) throw new Error('inspection failed');
+        release(0);
+      } });
+    });
+    await Bun.sleep(5);
+    await expect(runtime.close()).rejects.toThrow('inspection failed');
+    await runtime.close();
+    await run;
+    expect(starts).toBe(1);
+    expect(attempts).toBe(2);
+  });
+
   test('shutdown drains the current job and cancels queued work without restarting HTTP', async () => {
     let release!: () => void;
     const drain = new Promise<void>(resolve => { release = resolve; });

@@ -60,7 +60,15 @@ HTTP child owns the PGlite engine while serving. Before any ingestion, the
 supervisor terminates the HTTP process group, waits for exit, kills and drains
 remaining descendants, then runs the ingestion CLI sequentially. The supervisor
 never opens the DB itself. Its HTTP worker closes the listener and disconnects
-the engine before exit; an unclean exit prevents the next ingestion owner. After ingestion exits, HTTP restarts. HTTP requests
+the engine before exit; an unclean exit prevents the next ingestion owner. After
+ingestion exits and its descendants are verified drained, HTTP restarts, including
+after an ordinary failed ingestion. Failed inspection, signalling or drain keeps
+the cleanup owner and blocks both HTTP restart and later ingestion. Shutdown
+retries that cleanup while retaining the external lock. Linux process-group
+signals are fenced by the child's captured birth time and session identity;
+cleanup never adopts a recycled PID. If cleanup remains uncertain, root must
+verify termination before replacing the container or force-stopping it.
+HTTP requests
 are temporarily unavailable during maintenance. This tradeoff keeps the existing
 PGlite engine and provider choices; do not run sidecar CLI writers or replicas.
 All host-side legacy writers must still be stopped and fenced before cutover.
